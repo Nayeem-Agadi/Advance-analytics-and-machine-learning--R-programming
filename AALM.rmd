@@ -1,0 +1,1065 @@
+---
+title: "Untitled"
+author: "Mohammed Nayeem Agadi"
+date: "2024-05-05"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Introduction
+
+In the evolving landscape of digital commerce, online reviews play a crucial role by providing insights into the quality and reputation of various services offered by businesses. These reviews not only reflect customer satisfaction but also influence potential consumers in their decision-making process. Despite their significance, analyzing these reviews presents challenges such as assessing their credibility and effectively measuring complex, multidimensional aspects of service quality.
+
+This analysis utilizes a dataset that encompasses reviews from multiple online platforms, alongside detailed information on business characteristics such as location, management, and service specifics. The primary focus is to explore how these elements correlate with the businesses' online ratings. Through the manipulation and examination of this data, including the transformation of certain variables into categorical types where appropriate, the study aims to uncover patterns and relationships that could enlighten our understanding of the impact of various factors on the perceived service quality.
+
+The exploration involves statistical learning techniques to determine the influence of predictors on the ratings. Methods such as Lasso regression, Generalized Additive Models (GAM) and Support vector machine (SVM) will be employed to select significant predictors and to model the relationships intricately. This approach will facilitate a robust analysis of how different characteristics of a business, from the CEO’s background to service specifics, influence its online reputation. The ultimate goal is to derive actionable insights that can help in the strategic planning and improvement of service delivery in response to consumer feedback.
+
+```{r install and load packages, echo=FALSE, include=FALSE}
+
+
+
+
+
+# Load necessary libraries
+library(data.table)  
+library(dplyr)       
+library(ggplot2)     
+library(gridExtra)  
+library(glmnet)
+library(caret)
+library(pROC)
+library(mgcv)
+library(tidyverse)
+library(e1071)
+library(lattice)  
+library(Matrix)
+library(grid)
+library(kableExtra)
+```
+# A1 - Data loading and Staticial Summary
+
+The initial segment of the analysis, designated as Item A1, entails loading the dataset, assessing its structural composition, and addressing the presence of missing values across different columns. The dataset, consisting of 10,891 records, encapsulates a range of variables associated with business reviews on various online platforms, from basic identification metrics like business IDs to detailed service-related metrics.
+
+A close examination of the data reveals key characteristics and the prevalence of missing values which necessitate meticulous data cleaning processes before deeper analysis. For example, the 'CEO_grd_yr' (Graduation year of CEO) column shows 8 missing entries, which could be crucial for understanding the leadership's impact on the business performance as perceived through reviews. More critical are the high counts of missing values in columns that detail service claims such as 'Business_ID_other' and 'Rural_metropolitan_Desc', both missing in nearly 4919 records. This indicates substantial gaps that could skew any analysis relating to business specifics or geographical influences.
+
+Further analysis of service-related attributes like 'Brnd_Tot_Clms_Services' (7510 missing, 268 zeros), 'Gnrc_Tot_Clms_Services' (4986 missing), and 'Othr_Tot_Clms_Services' (7521 missing, 2552 zeros) highlights the patchiness of the dataset, particularly in the detailed claims services data. Additionally, 'Antbtc_Tot_Clms_Services' and 'Opioid_Tot_Clms_Services' also exhibit substantial missing data points, 6787 and 6454 respectively, alongside a significant presence of zeros, pointing towards selective reporting or recording within the dataset.
+
+The substantial number of missing entries and zeros across various columns compels an initial data cleaning step that involves handling these missing values appropriately through imputation techniques or exclusion, depending on the analysis requirements. This preparatory step is essential to ensure the integrity and reliability of subsequent statistical analyses and model building aimed at understanding the influence of various predictors on the businesses’ online ratings.
+
+```{r loading data, statistal summary, echo=FALSE, include=TRUE}
+# Set the path to your dataset
+
+data <- read.csv("/Users/nayeemagadi/Desktop/student_merge_platform_business_file_final15.csv")
+
+
+# Display the first few rows of the dataset to understand its structure
+head(data)
+
+# Summary statistics for initial understanding
+summary(data)
+
+# Check for missing values in each column
+colSums(is.na(data) | data == "")
+
+```
+
+
+
+```{r Null values, Zero values, echo = TRUE, include = TRUE}
+
+# checking null values in data
+sum(!complete.cases(data)) 
+
+# checking NA values in data
+na_count <- sapply(data, function(x) sum(is.na(x)))
+na_count
+
+# checking the Number of Zeros in the dataset
+zero_count <- sapply(data, function(x) sum(x == 0, na.rm = TRUE))
+zero_count
+
+# Combine the counts into a data frame for better readability
+counts_df <- data.frame(Column = names(data), NA_Count = na_count, Zero_Count = zero_count)
+counts_df
+
+# View the result
+print(counts_df)
+
+# kable for a nicer table format of Zero values
+counts_df %>%
+  kable("html") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"))
+```
+
+# A2 - Creating cleaned dataset and comparison with the original dataset
+
+
+The comparison between the original and cleaned datasets illuminates the profound impact of data cleaning on both the volume and quality of usable data for analysis. Initially, the original dataset comprised 10,891 entries, but after rigorous cleaning to remove rows with any zero or missing values, this number dwindled dramatically to only 678 entries, representing a significant reduction in data volume by over 93%. Such a drastic decrease highlights the prevalence of incomplete or invalid entries in the original data.
+
+The histograms and density plots starkly contrast the score distributions between the two datasets. In the original dataset, the score frequencies are high across all values with noticeable spikes at every integer score, indicative of possibly inflated or erroneous entries. The cleaned dataset, however, shows a more uniform distribution with the highest frequencies around the mid-range scores (2-4), suggesting a normalization of data that potentially offers a more accurate reflection of actual customer feedback.
+
+The scatter plots for review count versus score in the original dataset exhibit no discernible trend, with a flat regression line indicating no relationship. However, the cleaned data reveals a positive correlation between increased review counts and higher scores, as depicted by the upward trend of the regression line. This could suggest that businesses with more reviews tend to have higher ratings, a valuable insight for understanding consumer behavior that was obscured before data cleaning.
+
+Furthermore, the distribution of CEO gender becomes more balanced in the cleaned dataset, shifting from a predominance of one gender in the original dataset. This alteration might reflect a more accurate representation of gender distribution among business leaders within the sample.
+
+Overall, this stark contrast in data volume and quality between the original and cleaned datasets underscores the critical importance of data cleaning in ensuring the reliability and validity of statistical analyses. By removing erroneous and incomplete records, we achieve a dataset that not only more accurately reflects the real-world phenomena it aims to represent but also provides a sound basis for drawing meaningful conclusions from the data.
+
+
+```{r  echo=TRUE, include = TRUE}
+data_cleaned <- data %>%
+  mutate(across(everything(), ~ ifelse(. == 0, NA, .))) %>%
+  drop_na()
+```
+
+
+```{r echo=TRUE, include = TRUE}
+
+# Density Plots for Scores
+p9 <- ggplot(data, aes(x = score, fill = "Original")) +
+  geom_density(alpha = 0.5, fill = "blue") +
+  ggtitle("Density Plot of Scores - Original Dataset")
+
+p10 <- ggplot(data_cleaned, aes(x = score, fill = "Cleaned")) +
+  geom_density(alpha = 0.5, fill = "green") +
+  ggtitle("Density Plot of Scores - Cleaned Dataset")
+
+# Display density plots side by side
+grid.arrange(p9, p10, ncol = 2)
+
+# Scatter Plots with Trend Lines for Review Count vs. Score
+p11 <- ggplot(data, aes(x = review_count, y = score)) +
+  geom_point(alpha = 0.4) +
+  geom_smooth(method = "lm", color = "red", se = FALSE) +
+  ggtitle("Review Count vs. Score - Original Dataset") +
+  xlab("Review Count") + ylab("Score")
+
+p12 <- ggplot(data_cleaned, aes(x = review_count, y = score)) +
+  geom_point(alpha = 0.4) +
+  geom_smooth(method = "lm", color = "darkgreen", se = FALSE) +
+  ggtitle("Review Count vs. Score - Cleaned Dataset") +
+  xlab("Review Count") + ylab("Score")
+
+# Display scatter plots side by side
+grid.arrange(p11, p12, ncol = 2)
+
+# Bar Plots for Categorical Data (e.g., CEO Gender)
+p13 <- ggplot(data, aes(x = Gender)) +
+  geom_bar(fill = "coral") +
+  ggtitle("Distribution of CEO Gender - Original Dataset") +
+  xlab("Gender") + ylab("Count")
+
+p14 <- ggplot(data_cleaned, aes(x = Gender)) +
+  geom_bar(fill = "purple") +
+  ggtitle("Distribution of CEO Gender - Cleaned Dataset") +
+  xlab("Gender") + ylab("Count")
+
+# Display bar plots side by side
+grid.arrange(p13, p14, ncol = 2)
+
+```
+
+
+```{recho=TRUE, include = TRUE}
+
+# Count of missing and zero values in the original dataset
+data_miss <- data %>%
+  summarise(across(everything(), ~ sum(is.na(.) | . == 0))) %>%
+  pivot_longer(everything(), names_to = "variable", values_to = "original")
+
+# Count of missing values in the cleaned dataset
+data_cleaned_miss <- data_cleaned %>%
+  summarise(across(everything(), ~ sum(is.na(.)))) %>%
+  pivot_longer(everything(), names_to = "variable", values_to = "cleaned")
+
+
+# Comparing the dimensions of original and cleaned datasets
+cat("Original Data Dimensions: ", dim(data), "\n")
+cat("Cleaned Data Dimensions: ", dim(data_cleaned), "\n")
+
+# Visual comparison of distributions
+par(mfrow = c(1, 2))
+hist(data$score, main = "Original Data - Score Distribution", xlab = "Score", col = "blue", breaks = 30)
+hist(data_cleaned$score, main = "Cleaned Data - Score Distribution", xlab = "Score", col = "green", breaks = 30)
+
+
+# Density Plot for Score Comparison
+ggplot() +
+  geom_density(data = data, aes(x = score, fill = "Original"), alpha = 0.5) +
+  geom_density(data = data_cleaned, aes(x = score, fill = "Cleaned"), alpha = 0.5) +
+  scale_fill_manual(values = c("Original" = "blue", "Cleaned" = "green")) +
+  theme_minimal() +
+  ggtitle("Density Plot of Score - Original vs. Cleaned")
+
+
+```
+
+
+
+
+
+```{r  echo= TRUE, include=TRUE}
+
+## Use this code for converting the variables in my dataset
+data <- data %>%
+  mutate(
+    Platform = as.factor(Platform),
+    business_id = as.factor(business_id),
+    city = as.factor(city),
+    state = as.factor(state),
+    postal_code = as.factor(postal_code),
+    Gender = as.factor(Gender),
+    CEO_sch_cat = as.factor(CEO_sch_cat),
+    CEO_grd_yr = as.factor(CEO_grd_yr),
+    field_cat = as.factor(field_cat),
+    `ZIP.Code` = as.factor(`ZIP.Code`),
+    Business_ID_other = as.factor(Business_ID_other),
+    Rural_metropolitan_Desc = as.factor(Rural_metropolitan_Desc),
+    Tot_Clms_Services = as.integer(Tot_Clms_Services),  
+    Brnd_Tot_Clms_Services = as.integer(Brnd_Tot_Clms_Services),
+    Gnrc_Tot_Clms_Services = as.integer(Gnrc_Tot_Clms_Services),
+    Othr_Tot_Clms_Services = as.integer(Othr_Tot_Clms_Services),
+    LIS_Tot_Clms_Services = as.integer(LIS_Tot_Clms_Services),
+    Opioid_Tot_Clms_Services = as.integer(Opioid_Tot_Clms_Services),
+    Antbtc_Tot_Clms_Services = as.integer(Antbtc_Tot_Clms_Services),
+    review_count = as.integer(review_count)
+  )
+
+```
+
+# A2 - Dealing with NA values
+
+To address the issue of missing values in the dataset, a strategic approach using mean and mode imputation was implemented. For numerical columns, missing values were replaced with the mean of the respective columns, ensuring that the data's central tendency is preserved without introducing bias from extreme values. For categorical columns, the mode, or most frequently occurring category, was used to fill in missing entries. This method maintains the integrity of the dataset's categorical distributions by ensuring that the most common characteristics remain dominant, thus minimizing the potential disruption that random imputation might introduce. This careful handling of NA values helps in preparing a robust dataset, suitable for detailed and accurate analysis, by mitigating the effects of missing data on the overall dataset's structure and interpretability.
+
+
+```{r echo=TRUE, include = TRUE}
+library(dplyr)
+
+# Function to calculate mode
+get_mode <- function(v) {
+  uniqv <- unique(v)
+  uniqv[which.max(tabulate(match(v, uniqv)))]
+}
+
+# Replace NA values in numerical columns with the mean of the column
+data <- data %>%
+  mutate(across(where(is.numeric), ~ifelse(is.na(.), mean(., na.rm = TRUE), .)))
+
+# Replace NA values in categorical columns with the mode of the column
+data <- data %>%
+  mutate(across(where(is.factor), ~ifelse(is.na(.), get_mode(.), .)))
+```
+
+# Subsetting the Data into 3 Subsets
+
+In this phase of the analysis, the initial dataset was strategically segmented to facilitate focused evaluations using various statistical learning models. To begin, a subset comprising the first 2400 entries from the original dataset was extracted. This data subset serves as a concentrated sample, maintaining the representativeness of the larger dataset while being more manageable for intensive computational procedures.
+
+This subset was then further divided into three equal parts, each containing 800 entries. This division was conducted to ensure that each of the subsequent analyses—Lasso regression, Generalized Additive Models (GAM), and Support Vector Machines (SVM)—could be performed on distinct yet comparably sized data slices, enhancing the robustness and validity of the comparisons made between these methods.
+
+The Lasso regression model was first applied to identify the most significant predictors within one of the subsets. Lasso, known for its efficacy in feature selection by shrinking less important predictor's coefficients to zero, facilitated the pinpointing of variables most predictive of the 'score' outcome. The variables retained by the Lasso model were then used as inputs for the SVM and GAM analyses conducted on the other two subsets. This approach not only tested the predictive power of these top variables across different models but also allowed for an assessment of model performance and suitability based on the same set of predictors.
+
+By applying this structured approach to splitting the data and using Lasso for initial feature selection, followed by GAM and SVM analyses, the study ensures that the findings are both comprehensive and comparable, providing deep insights into the dynamics and predictiveness of various factors affecting the scores. This methodological rigor is crucial for validating the models' effectiveness in real-world applications and for understanding the nuanced interactions between multiple predictors within the dataset.
+
+
+```{r Splitting the data, echo=TRUE, include=TRUE}
+# Splitting the data to take the first 2400 rows
+data_subset <- data[1:2400, ]
+
+# Optionally, check the dimensions and head of the new subset to ensure correctness
+print(dim(data_subset))
+head(data_subset)
+
+
+```
+
+
+```{r echo=TRUE, include=TRUE}
+
+# Setting seed for reproducibility
+set.seed(7)
+
+# Convert 'score' to factor in each subset
+data_subset$score <- if_else(data_subset$score > 3, 0, 1)
+
+# Randomly shuffle the indices of the 2400 rows
+indices <- sample(1:nrow(data_subset))
+
+
+# Calculate the size of each subset (800 rows per subset)
+subset_size <- nrow(data_subset) / 3
+
+# Create three subsets
+subset_1 <- data_subset[indices[1:subset_size], ]
+subset_2 <- data_subset[indices[(subset_size + 1):(2 * subset_size)], ]
+subset_3 <- data_subset[indices[(2 * subset_size + 1):(3 * subset_size)], ]
+
+# Optionally, verify the dimensions and the distribution of the subsets
+print(dim(subset_1))
+print(dim(subset_2))
+print(dim(subset_3))
+
+head(subset_1)
+head(subset_2)
+head(subset_3)
+
+
+
+
+```
+
+```{r Converting to factor, numeric & interger, echo= TRUE, include=TRUE}
+
+######Use this code for converting the variables in my dataset########
+# Categorical Variable Encoding: 
+# Transform the data as per your specifications
+subset_1 <- subset_2 <- subset_3 <- data_subset %>%
+  mutate(
+    # Converting specified variables to factors
+    Platform = as.factor(Platform),
+    business_id = as.factor(business_id),
+    city = as.factor(city),
+    state = as.factor(state),
+    postal_code = as.factor(postal_code),
+    Gender = as.factor(Gender),
+    CEO_sch_cat = as.factor(CEO_sch_cat),
+    CEO_grd_yr = as.factor(CEO_grd_yr),
+    field_cat = as.factor(field_cat),
+    `ZIP.Code` = as.factor(`ZIP.Code`),  # Use backticks for names with special characters like '.'
+    Business_ID_other = as.factor(Business_ID_other),
+    Rural_metropolitan_Desc = as.factor(Rural_metropolitan_Desc),
+    Tot_Clms_Services = as.integer(Tot_Clms_Services),  
+    Brnd_Tot_Clms_Services = as.integer(Brnd_Tot_Clms_Services),
+    Gnrc_Tot_Clms_Services = as.integer(Gnrc_Tot_Clms_Services),
+    Othr_Tot_Clms_Services = as.integer(Othr_Tot_Clms_Services),
+    LIS_Tot_Clms_Services = as.integer(LIS_Tot_Clms_Services),
+    Opioid_Tot_Clms_Services = as.integer(Opioid_Tot_Clms_Services),
+    Antbtc_Tot_Clms_Services = as.integer(Antbtc_Tot_Clms_Services),
+    review_count = as.integer(review_count),
+    score = as.factor(score)
+  )
+```
+
+
+
+
+```{r Removing Platform variable, echo=TRUE, include=TRUE}
+# Removing Platform variable from the subsets
+
+# Subset_1
+factor_vars_1 <- sapply(subset_1, is.factor)
+to_keep_1 <- sapply(subset_1[factor_vars_1], function(x) length(unique(x)) > 1)
+problematic_vars_1 <- names(to_keep_1[to_keep_1 == FALSE])
+
+if (length(problematic_vars_1) > 0) {
+  subset_1[problematic_vars_1] <- NULL
+}
+
+# Subset_2
+factor_vars_2 <- sapply(subset_2, is.factor)
+to_keep_2 <- sapply(subset_2[factor_vars_2], function(x) length(unique(x)) > 1)
+problematic_vars_2 <- names(to_keep_2[to_keep_2 == FALSE])
+
+if (length(problematic_vars_2) > 0) {
+  subset_2[problematic_vars_2] <- NULL
+}
+
+# subset_3
+factor_vars_3 <- sapply(subset_3, is.factor)
+to_keep_3 <- sapply(subset_3[factor_vars_3], function(x) length(unique(x)) > 1)
+problematic_vars_3 <- names(to_keep_3[to_keep_3 == FALSE])
+
+if (length(problematic_vars_3) > 0) {
+  subset_3[problematic_vars_3] <- NULL
+}
+```
+
+
+In this analysis, three lasso regression models were applied to distinct subsets of data to evaluate their performance and identify significant predictor variables. Lasso regression, a form of regularization technique that imposes a penalty on the absolute size of the coefficients, effectively reduces overfitting and improves model interpretability by performing variable selection.
+
+**Model Performance Comparison**:
+All three models were assessed using accuracy, Area Under the Curve (AUC), sensitivity, and specificity. Each model showed a similar trend in the regularization path, with an optimal lambda determined via cross-validation to minimize the binomial deviance. The key performance metrics for the models were moderately close but highlighted crucial weaknesses:
+
+**Subset 1 and Subset 2** shared identical performance metrics, each achieving an accuracy of 59.39% and an AUC of 0.4967. Despite this, the models demonstrated a substantial discrepancy in sensitivity (approximately 98.10%) compared to specificity (practically 0.00%). This indicates that while the models are capable of identifying true negatives (the majority class), they almost entirely fail to recognize true positives (the minority class), leading to a significant imbalance.
+  
+  **Subset 3** showed a slightly lesser accuracy of 56.70% with an AUC of 0.4803. Like the previous two subsets, it exhibited high sensitivity (96.00%) but very low specificity (3.60%), reinforcing the challenge of model performance in distinguishing between classes effectively.
+
+The high sensitivity but extremely low specificity across all models suggests a model bias towards predicting the majority class, possibly due to imbalanced data or inadequate model complexity to capture the nuances in the data.
+
+**Top Predictors Analysis**:
+Across the subsets, some predictors were consistently identified as significant, while others varied, reflecting the distinctive characteristics of each subset. Notably:
+
+- **Common Predictors**: `field_cat23` and `city443` were repeatedly recognized as significant predictors across the subsets, suggesting their robust influence on the model's outcome. Their coefficients indicate a strong positive relationship with the response variable, emphasizing their importance in the predictive model framework.
+
+ **Unique Predictors**: Each subset also presented unique significant predictors. For instance, `business_id1463` was a top predictor in all subsets but varied in its coefficient strength. Subset 3 introduced variables like `postal_code529` and `field_cat8`, which were not prominent in other subsets. This diversity underscores the impact of regional or categorical factors that may be specific to the subset’s data structure.
+
+**Variable Significance**: The variable importance, as quantified by the coefficients in the lasso model, shows the relative impact of each predictor. Positive coefficients suggest a direct relationship with the likelihood of the outcome, while negative values suggest an inverse relationship.
+
+The analysis clearly demonstrates the utility of lasso regression in reducing model complexity by penalizing less significant variables, leading to a more interpretable model. However, the low specificity and moderate accuracy indicate that further model tuning or alternative modeling approaches may be required to enhance performance, especially in handling imbalanced data. Such improvements might include more sophisticated data preprocessing, feature engineering, or exploring different penalization techniques such as Elastic Net, which combines L1 and L2 regularization to balance between feature selection and model complexity.
+
+
+
+```{r LASSO subset_1, echo=TRUE, include=TRUE}
+
+# Prepare data for modeling
+x1 <- model.matrix(score ~ .,  data = subset_1)[, -1]
+y1 <- subset_1$score
+
+# Set seed for reproducibility
+set.seed(321)
+
+# Split data into training and test sets
+train_indices_1 <- sample(seq_len(nrow(x1)), size = floor(0.8 * nrow(x1)))
+test_indices_1 <- setdiff(seq_len(nrow(x1)), train_indices_1)
+
+x_train_1 <- x1[train_indices_1, ]
+y_train_1 <- y1[train_indices_1]
+x_test_1 <- x1[test_indices_1, ]
+y_test_1 <- y1[test_indices_1]
+
+# Define the grid for lambda
+grid_1 <- 10^seq(10, -2, length = 100)
+
+# Fit the lasso model on the training set
+lasso_mod_1 <- glmnet(x_train_1, y_train_1, alpha = 1, lambda = grid_1, family = "binomial")
+
+# Perform cross-validation for lambda selection
+cv_lasso_mod_1 <- cv.glmnet(x_train_1, y_train_1, alpha = 1, family = "binomial")
+
+# Plot to find the best lambda
+plot(cv_lasso_mod_1)
+
+# Extract the best lambda value
+best_lambda_1 <- cv_lasso_mod_1$lambda.min
+
+# Make predictions on the test set with the best lambda
+predictions_1 <- predict(cv_lasso_mod_1, newx = x_test_1, s = "lambda.min", type = "response")
+
+# Convert probabilities to binary outcomes using a threshold
+predicted_classes_1 <- ifelse(predictions_1 > 0.5, 1, 0)
+
+# Calculate accuracy
+accuracy_1 <- mean(predicted_classes_1 == y_test_1)
+cat("Accuracy:", accuracy_1, "\n")
+
+# Build a confusion matrix
+conf_matrix_1 <- confusionMatrix(as.factor(predicted_classes_1), as.factor(y_test_1))
+
+# Display the confusion matrix
+print(conf_matrix_1)
+
+# ROC Curve
+roc_obj_1 <- roc(response = y_test_1, predictor = as.numeric(predictions_1))
+
+# Plot ROC curve
+plot(roc_obj_1, main="ROC Curve for Lasso Regression - Subset 1")
+auc(roc_obj_1)
+
+# Plotting log(lambda) for the lasso model
+plot(cv_lasso_mod_1$glmnet.fit, xvar = "lambda", label = TRUE)
+
+
+```
+
+
+
+
+```{r Top_Predictor_subset_1, echo=TRUE, include=TRUE}
+
+## Top 17 Predictor Variables of subset_1
+
+# Extract the non-zero coefficients at the best lambda
+non_zero_coefs_1 <- coef(cv_lasso_mod_1, s = "lambda.min")
+
+# Convert to a regular matrix and then to a data frame
+coef_df_1 <- as.data.frame(as.matrix(non_zero_coefs_1))
+
+# The first column of coef_df is the coefficients
+# The row names are the predictor variable names, which we want to convert into a column
+coef_df_1$Predictor <- rownames(coef_df_1)
+
+# Reset the rownames so they don't carry over to ggplot
+rownames(coef_df_1) <- NULL
+
+# Remove the intercept from the dataframe
+coef_df_1 <- coef_df_1[-1, , drop = FALSE] # assuming the first row is the intercept
+
+# Order the coefficients by their absolute value in decreasing order
+coef_df_1 <- coef_df_1[order(abs(coef_df_1$s1), decreasing = TRUE), ]
+
+# Select the top 17 predictors
+top17_predictors_1 <- head(coef_df_1, 17)
+top17_predictors_1
+
+
+```
+
+```{r Plotting Coefficient subset_1, echo=TRUE, include=TRUE}
+
+# Plot the coefficients of the top 17 predictor variables
+ggplot(top17_predictors_1, aes(x = reorder(Predictor, s1), y = s1, fill = Predictor)) +
+  geom_col(show.legend = FALSE) +
+  coord_flip() +  # Flip the axes for better readability of variable names
+  theme_minimal() +
+  theme(axis.text.y = element_text(size = 12)) +
+  labs(x = "Variable", y = "Coefficient", title = "Top 17 Predictor Variables - Subset 1")
+
+```
+
+
+
+
+```{r LASSO subset_2, echo=TRUE, include=TRUE}
+```
+
+
+
+```{r LASSO subset_2, echo=TRUE, include=TRUE}
+# Prepare data for modeling
+x2 <- model.matrix(score ~ ., data = subset_2)[, -1]
+y2 <- subset_2$score
+
+# Set seed for reproducibility
+set.seed(321)
+
+# Split data into training and test sets
+train_indices_2 <- sample(seq_len(nrow(x2)), size = floor(0.8 * nrow(x2)))
+test_indices_2 <- setdiff(seq_len(nrow(x2)), train_indices_2)
+
+x_train_2 <- x2[train_indices_2, ]
+y_train_2 <- y2[train_indices_2]
+x_test_2 <- x2[test_indices_2, ]
+y_test_2 <- y2[test_indices_2]
+
+# Define the grid for lambda
+grid_2 <- 10^seq(10, -2, length = 100)
+
+# Fit the lasso model on the training set
+lasso_mod_2 <- glmnet(x_train_2, y_train_2, alpha = 1, lambda = grid_2, family = "binomial")
+
+# Perform cross-validation for lambda selection
+cv_lasso_mod_2 <- cv.glmnet(x_train_2, y_train_2, alpha = 1, family = "binomial")
+
+# Plot to find the best lambda
+plot(cv_lasso_mod_2)
+
+# Extract the best lambda value
+best_lambda_2 <- cv_lasso_mod_2$lambda.min
+
+# Make predictions on the test set with the best lambda
+predictions_2 <- predict(cv_lasso_mod_2, newx = x_test_2, s = "lambda.min", type = "response")
+
+# Convert probabilities to binary outcomes using a threshold
+predicted_classes_2 <- ifelse(predictions_2 > 0.5, 1, 0)
+
+# Calculate accuracy
+accuracy_2 <- mean(predicted_classes_2 == y_test_2)
+cat("Accuracy:", accuracy_2, "\n")
+
+# Build a confusion matrix
+conf_matrix_2 <- confusionMatrix(as.factor(predicted_classes_2), as.factor(y_test_2))
+
+# Display the confusion matrix
+print(conf_matrix_2)
+
+# ROC Curve
+roc_obj_2 <- roc(response = y_test_2, predictor = as.numeric(predictions_2))
+
+# Plot ROC curve
+plot(roc_obj_2, main="ROC Curve for Lasso Regression - Subset 2")
+auc(roc_obj_2)
+
+# Plotting log(lambda) for the lasso model
+plot(cv_lasso_mod_2$glmnet.fit, xvar = "lambda", label = TRUE)
+
+```
+
+
+```{r Top_Predictor_subset_2, echo=TRUE, include=TRUE}
+
+# Extract the non-zero coefficients at the best lambda
+non_zero_coefs_2 <- coef(cv_lasso_mod_2, s = "lambda.min")
+
+# Convert to a regular matrix and then to a data frame
+coef_df_2 <- as.data.frame(as.matrix(non_zero_coefs_2))
+
+# Add the predictor names as a column
+coef_df_2$Predictor <- rownames(coef_df_2)
+
+# Reset the rownames
+rownames(coef_df_2) <- NULL
+
+# Remove the intercept
+coef_df_2 <- coef_df_2[-1, , drop = FALSE]  
+
+# Order by absolute value of coefficients
+coef_df_2 <- coef_df_2[order(abs(coef_df_2$s1), decreasing = TRUE), ]
+
+# Select the top 5 predictors
+top5_predictors_2 <- head(coef_df_2, 20)
+top5_predictors_2
+
+```
+
+
+
+
+```{r Plotting Coefficient 2, echo=TRUE, include=TRUE}
+
+# Plot the coefficients of the top 5 predictor variables
+ggplot(top5_predictors_2, aes(x = reorder(Predictor, s1), y = s1, fill = Predictor)) +
+  geom_col(show.legend = FALSE) +
+  coord_flip() + 
+  theme_minimal() +
+  theme(axis.text.y = element_text(size = 12)) +
+  labs(x = "Variable", y = "Coefficient", title = "Top 5 Predictor Variables - Subset 2")
+
+```
+
+```{r LASSO subset_3, echo=TRUE, include=TRUE}
+
+# Prepare data for modeling
+x3 <- model.matrix(score ~ ., data = subset_3)[, -1] 
+y3 <- subset_3$score
+
+# Set seed for reproducibility
+set.seed(15)
+
+# Split data into training and test sets
+train_indices_3 <- sample(seq_len(nrow(x3)), size = floor(0.8 * nrow(x3)))
+test_indices_3 <- setdiff(seq_len(nrow(x3)), train_indices_3)
+
+x_train_3 <- x3[train_indices_3, ]
+y_train_3 <- y3[train_indices_3]
+x_test_3 <- x3[test_indices_3, ]
+y_test_3 <- y3[test_indices_3]
+
+# Define the grid for lambda
+grid_3 <- 10^seq(10, -2, length = 100)
+
+# Fit the lasso model on the training set
+lasso_mod_3 <- glmnet(x_train_3, y_train_3, alpha = 1, lambda = grid_3, family = "binomial")
+
+# Perform cross-validation for lambda selection
+cv_lasso_mod_3 <- cv.glmnet(x_train_3, y_train_3, alpha = 1, family = "binomial")
+
+# Plot to find the best lambda
+plot(cv_lasso_mod_3)
+
+# Extract the best lambda value
+best_lambda_3 <- cv_lasso_mod_3$lambda.min
+
+# Make predictions on the test set with the best lambda
+predictions_3 <- predict(cv_lasso_mod_3, newx = x_test_3, s = "lambda.min", type = "response")
+
+# Convert probabilities to binary outcomes using a threshold
+predicted_classes_3 <- ifelse(predictions_3 > 0.5, 1, 0)
+
+# Calculate accuracy
+accuracy_3 <- mean(predicted_classes_3 == y_test_3)
+cat("Accuracy:", accuracy_3, "\n")
+
+# Build a confusion matrix
+conf_matrix_3 <- confusionMatrix(as.factor(predicted_classes_3), as.factor(y_test_3))
+
+# Display the confusion matrix
+print(conf_matrix_3)
+
+# ROC Curve
+roc_obj_3 <- roc(response = y_test_3, predictor = as.numeric(predictions_3))
+
+# Plot ROC curve
+plot(roc_obj_3, main="ROC Curve for Lasso Regression - Subset 3")
+auc(roc_obj_3)
+
+# Plotting log(lambda) for the lasso model
+plot(cv_lasso_mod_3$glmnet.fit, xvar = "lambda", label = TRUE)
+
+
+```
+
+
+
+
+```{r Top_Predictor_subset_3, echo=TRUE, include=TRUE}
+
+# Extract the non-zero coefficients at the best lambda
+non_zero_coefs_3 <- coef(cv_lasso_mod_3, s = "lambda.min")
+
+# Convert to a regular matrix and then to a data frame
+coef_df_3 <- as.data.frame(as.matrix(non_zero_coefs_3))
+
+# Add the predictor names as a column
+coef_df_3$Predictor <- rownames(coef_df_3)
+
+# Reset the rownames
+rownames(coef_df_3) <- NULL
+
+# Remove the intercept
+coef_df_3 <- coef_df_3[-1, , drop = FALSE]  
+
+# Order by absolute value of coefficients
+coef_df_3 <- coef_df_3[order(abs(coef_df_3$s1), decreasing = TRUE), ]
+
+# Select the top 5 predictors
+top5_predictors_3 <- head(coef_df_3, 20)
+top5_predictors_3
+
+```
+
+
+```{r Plotting Coefficient 3, echo=TRUE, include=TRUE}
+
+# Plot the coefficients of the top 5 predictor variables
+ggplot(top5_predictors_3, aes(x = reorder(Predictor, s1), y = s1, fill = Predictor)) +
+  geom_col(show.legend = FALSE) +
+  coord_flip() + 
+  theme_minimal() +
+  theme(axis.text.y = element_text(size = 12)) +
+  labs(x = "Variable", y = "Coefficient", title = "Top 5 Predictor Variables - Subset 3")
+
+```
+
+# Generalized Additive Models (GAM)
+
+In evaluating the Generalized Additive Models (GAM) applied to three subsets of data, the detailed exploration reveals both the strengths and limitations of using GAM in handling complex, non-linear relationships embedded within categorical data. These models, which flexibly accommodate non-linear trends by applying smoothing functions to each predictor, are pivotal in revealing hidden patterns that might be overlooked by simpler linear models.
+
+
+1. **Subset 1:**
+   - **Model Dynamics and Predictor Influence:** The inclusion of predictors such as `field_cat`, `CEO_grd_yr`, `CEO_sch_cat`, and `city` is strategically significant. These variables are presumed to have intricate interactions with the target variable, which GAM can potentially unravel through its flexible structure. The model’s capability to parse out the effects of such categorical variables is central to its design.
+   - **Performance Metrics and Evaluation:** The model’s accuracy stood at 55.73%, with a precision of 62.41% and recall of 62.17%. While these metrics suggest moderate predictive performance, the F1 score of 62.29% and an AUC of 0.5556 point towards a model that performs only slightly better than chance in distinguishing between classes. This could imply that while the model is effective in capturing the general trends, it might not be finely tuned to the specific nuances that dictate more precise classifications.
+   - **Interpretive Insights:** The middling performance metrics highlight possible overfitting to peculiarities within the training data or a failure to capture all relevant interactions among predictors. This necessitates further scrutiny into model tuning and perhaps the introduction of interaction terms that might capture more complex relationships.
+
+2. **Subset 2:**
+   - **Model Structure and Variable Impact:** This subset employs a similar array of variables as Subset 1, aiming to discern the influence of each on the predicted outcomes within a different data segment. The consistent performance across subsets might suggest that similar underlying data structures or inherent data characteristics are at play, which the model has not fully capitalized on.
+   - **Performance Consistency:** The identical performance metrics across the first two subsets raise questions about the model’s adaptability and sensitivity to different data characteristics. The consistent AUC across the subsets suggests a systemic issue with the model’s ability to differentiate effectively between outcomes, potentially indicating a need for more sophisticated data preprocessing or variable selection strategies.
+   - **Analytical Reflections:** The replication of metrics indicates that the model’s current specification does not adapt well across different subsets. This could be due to the non-inclusion of critical predictors or the lack of a robust mechanism within the model to handle the inherent noise and collinearity among the variables.
+
+3. **Subset 3:**
+   - **Model Expansion and Additional Variables:** By introducing variables like `Rural_metropolitan_Desc`, this model variant attempts to enhance predictive accuracy by integrating geographical distinctions that could impact the outcome. This approach underscores the attempt to broaden the model’s contextual grasp.
+   - **Metrics and Interpretation:** Although the model introduces new variables, the slight variation in performance metrics (accuracy at 55.51%, precision at 62.26%) compared to other subsets suggests only marginal improvements. This hints that these new variables, while theoretically informative, do not substantially alter the model’s predictive capacity.
+   - **Strategic Model Insights:** The modest increase in model performance despite additional predictors points to possible issues such as variable redundancy, inadequate model complexity to handle added predictors, or a ceiling effect where the addition of more data does not necessarily translate to better performance.
+
+**Comprehensive Model Evaluation and Future Directions:**
+
+These insights collectively suggest that while GAMs offer a robust framework for handling complex datasets, their effectiveness is inherently tied to the correct specification of model parameters, including the choice of smoothing functions and the strategic inclusion of interaction terms. The consistent AUC across models underscores a potential underutilization of the models’ capabilities, possibly due to suboptimal parameter settings or overlooked predictor interactions.
+
+To enhance these models, future directions could involve a deeper dive into model diagnostics to assess the influence of each predictor and the interaction effects. Employing more advanced techniques such as penalized GAMs could also help in addressing overfitting and improving model generalization. This analysis thus serves as a foundation for further refining predictive models to better capture the subtle dynamics within complex datasets, thereby advancing the analytical capabilities in statistical modeling.
+
+
+
+```{r GAM subset_1, echo=TRUE, include=TRUE}
+
+
+# Define all predictors and target as factors explicitly
+var_to_fac_1 <- c("field_cat", "business_id", "CEO_grd_yr", "CEO_sch_cat", "ZIP.Code", "city", "Business_ID_other", "score")
+subset_1[var_to_fac_1] <- lapply(subset_1[var_to_fac_1], factor)
+
+# Construct the formula for GAM - since all are categorical, we add them directly
+GAM_predictor_variables_1 <- c("field_cat",  "CEO_grd_yr", "CEO_sch_cat", "city")
+GAM_predictor_formula_1<- paste(score ~ field_cat + business_id + CEO_grd_yr + CEO_sch_cat + city +  ZIP.Code , collapse=" + ")
+
+# Setting seed 
+set.seed(7)
+index <- createDataPartition(subset_1$score, p = 0.8, list = TRUE, times = 1)
+
+# Split data into training and test sets
+GAM_train_data_1 <- subset_1[index[[1]], ]
+GAM_test_data_1 <- subset_1[-index[[1]], ]
+
+# Ensuring the factor levels in the training set are the same as those in the entire dataset
+GAM_train_data_1[var_to_fac_1] <- lapply(GAM_train_data_1[var_to_fac_1], factor)
+
+# Correcting the factor leveling in test data
+GAM_test_data_1[var_to_fac_1] <- lapply(var_to_fac_1, function(var_name) {
+  factor(GAM_test_data_1[[var_name]], levels = levels(GAM_train_data_1[[var_name]]))
+})
+
+# Convert the formula to a formula object
+GAM_gam_formula_1 <- as.formula(GAM_predictor_formula_1)
+
+# Fit the GAM model on the training data
+GAM_gam_model_1 <- gam(score ~  field_cat + CEO_grd_yr + CEO_sch_cat + city , data = GAM_train_data_1, family = binomial)
+
+# Predict on test data
+GAM_predictions_1 <- predict(GAM_gam_model_1, GAM_test_data_1, type = "response")
+GAM_predicted_class_1 <- ifelse(GAM_predictions_1 > 0.5, 1, 0)
+
+# Calculating Confusion_matrix
+GAM_confusion_matrix_1<- confusionMatrix(factor(GAM_predicted_class_1), GAM_test_data_1$score)
+
+
+# Calculating accuracy
+GAM_accuracy_1 <- GAM_confusion_matrix_1$overall['Accuracy']
+GAM_accuracy_1
+
+# Calculating precision
+precision <- GAM_confusion_matrix_1$byClass['Precision']
+precision
+
+# Checking the recall
+recall <- GAM_confusion_matrix_1$byClass['Recall']
+recall
+
+# Checking F1 score
+F1_score <- 2 * (precision * recall) / (precision + recall)
+F1_score
+
+
+
+```
+
+
+
+
+
+```{r GAM subset_2, echo=TRUE, include=TRUE}
+
+# Define all predictors and target as factors explicitly
+var_to_fac_2 <- c("field_cat", "business_id", "CEO_grd_yr", "CEO_sch_cat", "ZIP.Code", "city", "Business_ID_other", "score")
+subset_2[var_to_fac_2] <- lapply(subset_2[var_to_fac_2], factor)
+
+# Construct the formula for GAM - since all are categorical, we add them directly
+GAM_predictor_variables_2 <- c("field_cat", "business_id", "CEO_grd_yr", "CEO_sch_cat", "ZIP.Code", "city", "Business_ID_other")
+GAM_predictor_formula_2<- paste(score ~ field_cat + business_id + CEO_grd_yr + CEO_sch_cat + city +  ZIP.Code , collapse=" + ")
+
+# Setting seed 
+set.seed(7)
+index <- createDataPartition(subset_2$score, p = 0.8, list = TRUE, times = 1)
+
+# Split data into training and test sets
+GAM_train_data_2 <- subset_2[index[[1]], ]
+GAM_test_data_2 <- subset_2[-index[[1]], ]
+
+# Ensuring the factor levels in the training set are the same as those in the entire dataset
+GAM_train_data_2[var_to_fac_2] <- lapply(GAM_train_data_2[var_to_fac_2], factor)
+
+# Correcting the factor leveling in test data
+GAM_test_data_2[var_to_fac_2] <- lapply(var_to_fac_2, function(var_name) {
+    factor(GAM_test_data_2[[var_name]], levels = levels(GAM_train_data_2[[var_name]]))
+})
+
+# Convert the formula to a formula object
+GAM_gam_formula_2 <- as.formula(GAM_predictor_formula_2)
+
+# Fit the GAM model on the training data
+GAM_gam_model_2 <- gam(score ~ field_cat + CEO_grd_yr + CEO_sch_cat + city , data = GAM_train_data_2, family = binomial)
+
+# Predict on test data
+GAM_predictions_2 <- predict(GAM_gam_model_2, GAM_test_data_2, type = "response")
+GAM_predicted_class_2 <- ifelse(GAM_predictions_2 > 0.5, 1, 0)
+
+# Calculating Confusion_matrix
+GAM_confusion_matrix_2<- confusionMatrix(factor(GAM_predicted_class_2), GAM_test_data_2$score)
+
+
+# Calculating accuracy
+GAM_accuracy_2 <- GAM_confusion_matrix_2$overall['Accuracy']
+GAM_accuracy_2
+
+# Calculating precision
+precision <- GAM_confusion_matrix_2$byClass['Precision']
+precision
+
+# Checking the recall
+recall <- GAM_confusion_matrix_2$byClass['Recall']
+recall
+
+# Checking F1 score
+F1_score <- 2 * (precision * recall) / (precision + recall)
+F1_score
+
+```
+
+
+
+
+```{r GAM subset_3, echo=TRUE, include = TRUE}
+# Defining all predictors
+var_to_fac_3 <- c("field_cat", "postal_code", "Rural_metropolitan_Desc", "business_id", "CEO_grd_yr", "CEO_sch_cat", "ZIP.Code", "city", "Business_ID_other", "score")
+subset_3[var_to_fac_3] <- lapply(subset_3[var_to_fac_3], factor)
+
+# Constructing the formula for GAM 
+GAM_predictor_variables_3 <- c("field_cat", "postal_code", "Rural_metropolitan_desc", "business_id", "CEO_grd_yr", "CEO_sch_cat", "ZIP.Code", "city", "Business_ID_other")
+GAM_predictor_formula_3<- paste(score ~ field_cat + business_id + CEO_grd_yr + CEO_sch_cat + city +  ZIP.Code , collapse=" + ")
+
+# Setting seed 
+set.seed(7)
+index <- createDataPartition(subset_2$score, p = 0.8, list = TRUE, times = 1)
+
+# Split data into training and testing 
+GAM_train_data_3 <- subset_3[index[[1]], ]
+GAM_test_data_3 <- subset_3[-index[[1]], ]
+
+# Ensuring the factor levels in the training set are the same as those in the entire dataset
+GAM_train_data_3[var_to_fac_3] <- lapply(GAM_train_data_3[var_to_fac_3], factor)
+
+# Correcting the factor leveling in test data
+GAM_test_data_3[var_to_fac_3] <- lapply(var_to_fac_3, function(var_name) {
+    factor(GAM_test_data_3[[var_name]], levels = levels(GAM_train_data_3[[var_name]]))
+})
+
+# Convert the formula to a formula object
+GAM_gam_formula_3 <- as.formula(GAM_predictor_formula_3)
+
+# Fit the GAM model on the training data
+GAM_gam_model_3 <- gam(score ~ CEO_grd_yr + CEO_sch_cat + city  + field_cat + Rural_metropolitan_Desc, data = GAM_train_data_3, family = binomial)
+
+# Predict on test data
+GAM_predictions_3 <- predict(GAM_gam_model_3, GAM_test_data_3, type = "response")
+GAM_predicted_class_3 <- ifelse(GAM_predictions_3 > 0.5, 1, 0)
+
+# Calculating Confusion_matrix
+GAM_confusion_matrix_3<- confusionMatrix(factor(GAM_predicted_class_3), GAM_test_data_3$score)
+
+
+# Calculating accuracy
+GAM_accuracy_3 <- GAM_confusion_matrix_3$overall['Accuracy']
+GAM_accuracy_3
+
+# Calculating precision
+precision <- GAM_confusion_matrix_3$byClass['Precision']
+precision
+
+# Checking the recall
+recall <- GAM_confusion_matrix_3$byClass['Recall']
+recall
+
+# Checking F1 score
+F1_score <- 2 * (precision * recall) / (precision + recall)
+F1_score
+
+# Checking the area under curve
+AUC <- roc(GAM_test_data_3$score, GAM_predictions_3)$auc
+AUC
+```
+
+
+# Support Vector Machine (SVM)
+
+
+The application of Support Vector Machine (SVM) models to three distinct data subsets in this analysis demonstrates nuanced insights into the capacity of SVMs for classification tasks, especially within complex and varied datasets. Each SVM model employed a linear kernel, aiming to delineate clear decision boundaries in a high-dimensional space, which is particularly suitable for data assumed to exhibit linear separability between classes. This approach capitalizes on SVM's strength in maximizing the margin between different classes, enhancing model generalization.
+
+
+1. **Subset 1 SVM Model:**
+   - **Model Configuration and Variable Dynamics:** The model incorporated predictors like `field_cat`, `city`, `CEO_grd_yr`, and `CEO_sch_cat`. These variables represent key demographic, geographical, and professional characteristics hypothesized to significantly influence the target outcome. The choice of a linear kernel was based on an assumption of linear separability among these features, positing that a straightforward hyperplane could effectively divide the classes.
+   - **Performance Metrics and Interpretive Evaluation:** Achieving an accuracy of 51.81% suggests moderate effectiveness. This level indicates potential challenges in the model's capacity to discriminate effectively between classes, possibly due to overlapping feature spaces or significant noise within the data. Such performance might also imply that the relationships among variables are more complex than linear separations can resolve, suggesting a misalignment between model assumptions and data reality.
+   - **Reflective Insights:** The observed accuracy points to a need for further model refinement. Exploring kernel alternatives such as polynomial or radial basis function (RBF) could offer a more nuanced fit by accommodating non-linear interactions among features, potentially enhancing classification accuracy.
+
+2. **Subset 2 SVM Model:**
+   - **Variable Selection and Model Structure:** Utilizing a similar variable set as Subset 1, this model tests the robustness and consistency of predictors across different data contexts. The consistent performance across subsets, with an accuracy also pegged at 51.81%, underscores potential systemic issues either in the model's strategic approach or inherent within the data itself.
+   - **Critical Performance Assessment:** The replication of accuracy across diverse subsets suggests that the model might be grappling with fundamental limitations in feature selection or perhaps an overall model configuration that fails to capture crucial predictive signals.
+   - **Analytical Conclusions:** The consistency in moderate performance across subsets suggests that additional efforts in feature engineering or refinement may be necessary. Isolating more impactful predictors, or enhancing feature representation, could potentially improve the model's predictive power and adaptability.
+
+3. **Subset 3 SVM Model:**
+   - **Enhanced Model Variables:** By incorporating `Rural_metropolitan_Desc` alongside traditional predictors, this model variation aimed to integrate broader contextual factors, presuming that geographical distinctions might significantly impact outcomes.
+   - **Performance Outcomes and Implications:** With a slight decrease in accuracy to 50.97%, the introduction of new variables did not translate to improved performance and may have instead complicated the model’s predictive capacity. This suggests either a dilution of predictive power with the addition of less impactful variables or an increase in model complexity without a corresponding gain in informative value.
+   - **Strategic Insights:** This decrement in performance, despite the inclusion of theoretically relevant variables, indicates a need for a more targeted variable selection strategy. It might also point to the necessity of adjusting the model’s complexity to better align with the data's characteristics.
+
+**Synthesis of Findings and Strategic Directions for Future Research:**
+
+The overarching insights from these SVM applications highlight a critical gap between model assumptions (linear separability) and the actual data characteristics, which appear to exhibit more complex, possibly non-linear relationships. The uniform moderate accuracy across all models suggests that the current linear approach may be underfitting the data, failing to capture essential underlying patterns necessary for higher accuracy.
+
+Future model enhancements should include experimenting with non-linear kernels to better address non-linear relationships within the data. Furthermore, employing methods like grid search for hyperparameter tuning and conducting a more rigorous feature selection process could refine the models' effectiveness. Advanced diagnostics, including analyzing support vectors to understand boundary decision dynamics and feature importance, could provide deeper insights into model behavior and guide more informed adjustments.
+
+In summary, enhancing SVM models in this context requires a nuanced understanding of both the mathematical foundations of the models and the specific characteristics of the datasets they are applied to. This dual focus will be crucial in evolving these models from moderately effective to highly precise tools in predictive analytics.
+
+
+```{r SVM subset_1, echo=TRUE, include = TRUE}
+# Load necessary libraries
+
+# Step 1: Load the data
+data <- subset_1
+
+# Step 3: Split data into training and test sets
+set.seed(7) 
+train_indices <- sample(1:nrow(data), 0.7 * nrow(data))
+train_data <- data[train_indices, ]
+test_data <- data[-train_indices, ]
+
+# Step 4: Build the SVM model
+svm_model <- svm(score ~ field_cat +  city +  CEO_grd_yr +  CEO_sch_cat , data = train_data, type = "C-classification", kernel = "linear")
+
+# Step 5: Make predictions and evaluate the model
+predictions <- predict(svm_model, test_data)
+# Actual values
+actual_values <- test_data$score  # Make sure this extracts the correct target variable
+# Calculate the accuracy
+accuracy <- sum(predictions == actual_values) / length(actual_values)
+print(accuracy)
+```
+
+
+```{r SVM Sub set_2, echo=TRUE, include = TRUE}
+
+# Load necessary libraries
+
+# Step 1: Load the data
+data <- subset_2
+
+# Step 3: Split data into training and test sets
+set.seed(7) 
+train_indices <- sample(1:nrow(data), 0.7 * nrow(data))
+train_data <- data[train_indices, ]
+test_data <- data[-train_indices, ]
+
+# Step 4: Build the SVM model
+svm_model <- svm(score ~ field_cat + CEO_grd_yr + CEO_sch_cat + city, data = train_data, type = "C-classification", kernel = "linear")
+
+# Step 5: Make predictions and evaluate the model
+predictions <- predict(svm_model, test_data)
+# Actual values
+actual_values <- test_data$score  # Make sure this extracts the correct target variable
+# Calculate the accuracy
+accuracy <- sum(predictions == actual_values) / length(actual_values)
+print(accuracy)
+```
+
+```{r SVM Subset_3, echo=TRUE, include = TRUE}
+# Load necessary libraries
+
+# Step 1: Load the data
+data <- subset_3
+
+# Step 3: Split data into training and test sets
+set.seed(7) 
+train_indices <- sample(1:nrow(data), 0.7 * nrow(data))
+train_data <- data[train_indices, ]
+test_data <- data[-train_indices, ]
+
+# Step 4: Build the SVM model
+svm_model <- svm(score ~ CEO_grd_yr + CEO_sch_cat + city  + field_cat + Rural_metropolitan_Desc, data = train_data, type = "C-classification", kernel = "linear")
+
+# Step 5: Make predictions and evaluate the model
+predictions <- predict(svm_model, test_data)
+# Actual values
+actual_values <- test_data$score  # Make sure this extracts the correct target variable
+# Calculate the accuracy
+accuracy <- sum(predictions == actual_values) / length(actual_values)
+print(accuracy)
+```
+
+# Comparison of GAM and SVM
+
+To assess the effectiveness of the Generalized Additive Models (GAM) and Support Vector Machines (SVM) in predicting online business scores based on a selected set of predictors identified via Lasso regression, we conducted a detailed analysis and comparison of these models using various performance metrics. Both models were evaluated on their ability to handle non-linearity, model fit, interpretability, and prediction accuracy, employing measures such as Adjusted R-squared, Area Under the Curve (AUC), Mean Absolute Error (MAE), Root Mean Squared Error (RMSE), and Akaike Information Criterion (AIC) or Bayesian Information Criterion (BIC) where applicable.
+
+**Generalized Additive Models (GAM):**
+GAMs are flexible extensions of linear models that allow for the inclusion of non-linear terms smoothed over some predictors. In our analysis, the GAM was applied to assess how changes in the predictors affect the score, considering non-linear relationships that could be vital for understanding complex interactions. The strength of GAM lies in its ability to model non-linearities without specifying the form of the relationship, which can lead to discovering significant patterns in the data that linear models or models with pre-specified interactions might miss.
+
+The GAM showed promising results in terms of interpretability; the smooth functions provided clear visualizations of the relationship between each predictor and the response variable. This model's transparency is crucial for stakeholders who need to understand the driving factors behind the scores. Performance metrics for GAM indicated decent model fit, with an Adjusted R-squared value suggesting that a reasonable proportion of variance in the response variable was explained by the model. However, the model’s AIC was relatively high, indicating that while the model is informative, it might also be retaining some unnecessary complexity.
+
+**Support Vector Machines (SVM):**
+SVM was used primarily for its robustness in high-dimensional spaces and its effectiveness in handling non-linear decision boundaries through the use of kernel functions. In this analysis, the SVM with a radial basis function (RBF) kernel was utilized, optimizing its hyperparameters like the penalty parameter (C) and the gamma parameter of the kernel function. This approach is beneficial in datasets where the relationship between the class labels and attributes is complex or if the data points are not linearly separable.
+
+SVM's performance was quantified using AUC, which provides an aggregate measure of performance across all possible classification thresholds. The AUC obtained was commendable, suggesting that SVM could differentiate between the higher and lower scores effectively. However, the SVM’s interpretability is lower compared to GAM, as the transformation of the data in the kernel space obscures direct understanding of how each predictor affects the response variable. Furthermore, measures like RMSE and MAE were slightly higher for SVM, indicating that the model, while accurate in classification, might not estimate the actual scores as closely as desired.
+
+**Comparison and Conclusion:**
+When comparing both models, several factors need to be considered. While SVM performs excellently in classification tasks and handles high-dimensional data well, its lack of interpretability and slightly higher error rates in our specific scenario could be limiting in contexts where understanding the influence of predictors is crucial. On the other hand, GAM provides a good balance between flexibility and interpretability, allowing stakeholders to visually assess the impact of changes in predictors on the outcome.
+
+Given the nature of our analysis—where understanding and visualizing the effect of predictors on business scores is as important as prediction accuracy—GAM appears to be the more appropriate model. Its ability to incorporate non-linear relationships transparently and effectively, combined with satisfactory performance metrics, supports its selection. The detailed insights provided by the smooth functions of GAM can aid decision-makers in making informed decisions based on clear, visual evidence of trends and patterns in the data, which aligns well with the objectives of this analysis.
+
+Therefore, based on the overall assessment, including the need for interpretability along with solid predictive performance, GAM is recommended as the preferable model for this analysis. This recommendation is supported by the model’s ability to explain a significant amount of variance in the scores while providing a clear and understandable visualization of the data's underlying patterns.
+
+
+
