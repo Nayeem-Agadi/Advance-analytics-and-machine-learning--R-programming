@@ -341,4 +341,4 @@ The full rendered analysis report with all visualisations, output tables, and na
 
 ---
 
-*University project — Advanced Analytics & Machine Learning, R Programming | Mohammed Nayeem Agadi | May 2024*
+*Queens University Belfast — Advanced Analytics & Machine Learning, R Programming | Mohammed Nayeem Agadi | May 2024*
