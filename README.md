@@ -337,7 +337,7 @@ source("AALM_analysis.R")
 
 ## 📄 Report
 
-The full rendered analysis report with all visualisations, output tables, and narrative is available as [`AAML.html`](./AAML.html).
+The full rendered analysis report with all visualisations, output tables, and narrative is available as [`AAML.pdf`](./AAML.pdf).
 
 ---
 
